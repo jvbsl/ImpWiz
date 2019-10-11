@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>library</OutputType>
+        <TargetFramework>netstandard2.0</TargetFramework>
+    </PropertyGroup>
+
+    <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
+
+    <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\ImpWiz.Import\ImpWiz.Import.csproj" />
+    </ItemGroup>
+    
+    <Target Name="Rewrite" AfterTargets="Build">
+        <Exec Command="dotnet $(SolutionDir)/ImpWiz/bin/$(Configuration)/netcoreapp3.0/ImpWiz.dll $(OutDir)/ImpWiz.Example.dll" ConsoleToMSBuild="true" />
+    </Target>
+
+</Project>
