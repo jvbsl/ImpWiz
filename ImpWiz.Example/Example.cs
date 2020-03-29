@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Runtime.InteropServices;
+using ImpWiz.Import;
 
 namespace ImpWiz.Example
 {
@@ -11,7 +12,9 @@ namespace ImpWiz.Example
         [DllImport("libdl.so", CallingConvention = CallingConvention.Cdecl)]
         public static extern void UnavailableSymbol();
 
-        [DllImport("libdl.so", EntryPoint = "dlerror", CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr GetError();
+        [DllImport("<redirect>", EntryPoint = "dlerror", CallingConvention = CallingConvention.Cdecl)]
+        [ImportLoader(typeof(CustomLibraryLoader))]
+        [return: MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(CustomMarshaler))]
+        public static extern string GetError();
     }
 }

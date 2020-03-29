@@ -51,7 +51,7 @@ namespace ImpWiz
         }
 
         /// <summary>
-        /// Starts a locking-block scope using the given <paramref cref="lockObject"/> field.
+        /// Starts a locking-block scope using the given <paramref cref="lockObject"/> parameter.
         /// </summary>
         /// <param name="lockObject">The object to do the locking on.</param>
         /// <exception cref="NotSupportedException">Nested locks currently not supported.</exception>

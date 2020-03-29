@@ -1,5 +1,9 @@
 using System;
+using System.Linq;
+using ImpWiz.CecilAttributes;
+using ImpWiz.Import;
 using ImpWiz.Import.LibLoader;
+using ImpWiz.Marshalers;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Cecil.Rocks;
@@ -55,6 +59,13 @@ namespace ImpWiz
                 newReturnType = returnType.MakeOptionalModifierType(module.ImportReference(convModifier));
             var m = new MethodDefinition(GetMangledLazyInitMethod(name), MethodAttributes.Static | MethodAttributes.Private | MethodAttributes.HideBySig, newReturnType);
 
+            int returnLocal = -1;
+            if (returnType != Module.TypeSystem.Void)
+            {
+                returnLocal = m.Body.Variables.Count;
+                m.Body.Variables.Add(new VariableDefinition(Module.ImportReference(returnType)));
+            }
+            
             var ilProcessor = m.Body.GetILProcessor();
 
             var locker = new LockHelper(module, m);
@@ -66,11 +77,11 @@ namespace ImpWiz
 
             if (returnType != Module.TypeSystem.Void)
             {
-                ilProcessor.EmitStloc(2);
+                ilProcessor.EmitStloc(returnLocal);
             }
 
             var endInstruction = (returnType != Module.TypeSystem.Void)
-                        ? ilProcessor.CreateLdloc(2)
+                        ? ilProcessor.CreateLdloc(returnLocal)
                         : ilProcessor.Create(OpCodes.Ret);
 
             locker.EndLock(endInstruction);
@@ -81,7 +92,7 @@ namespace ImpWiz
             return m;
         }
 
-        private MethodDefinition CreateOrGetLibraryLoadLib()
+        private MethodDefinition CreateOrGetLibraryLoadLib(ImportLoaderCecil importLoaderAttribute)
         {
             string libLoaderName = GetMangledLibraryLoadMethod(_libraryName);
             if (TypeContext.LibraryLoaders.TryGetValue(libLoaderName, out var m))
@@ -92,6 +103,7 @@ namespace ImpWiz
             TypeContext.LibraryLoaders.Add(libLoaderName, m);
             TypeContext.Type.Methods.Add(m);
             m.Body.Variables.Add(new VariableDefinition(Module.TypeSystem.IntPtr));
+            m.Body.InitLocals = true;
 
 
             var processor = m.Body.GetILProcessor();
@@ -104,9 +116,11 @@ namespace ImpWiz
             processor.Emit(OpCodes.Dup);
             processor.EmitStloc(0);
             
-            var libLoaderInstance = new MethodReference("get_" + nameof(LibLoader.Instance), TypeContext.InteropLibTypeReference, TypeContext.InteropLibTypeReference );
+            //var libLoaderInstance = new MethodReference("GetInstance" + nameof(LibLoader.Instance), TypeContext.InteropLibTypeReference, TypeContext.InteropLibTypeReference );
 
-            var loadingCode = processor.Create(OpCodes.Call, libLoaderInstance);
+            var loadingCode = (importLoaderAttribute.LoaderCookie == null)
+                ? processor.Create(OpCodes.Ldnull)
+                : processor.Create(OpCodes.Ldstr, importLoaderAttribute.LoaderCookie);
             
             processor.Emit(OpCodes.Brfalse_S, loadingCode);
 
@@ -115,9 +129,12 @@ namespace ImpWiz
             
 
             processor.Append(loadingCode);
+            
+            processor.Emit(OpCodes.Call, Module.ImportReference(importLoaderAttribute.GetInstanceMethod));
             processor.Emit(OpCodes.Ldstr, _libraryName);
 
-            var libLoaderLoad = new MethodReference(nameof(LibLoader.LoadLibrary), Module.TypeSystem.IntPtr, TypeContext.InteropLibTypeReference );
+            
+            var libLoaderLoad = new MethodReference(nameof(ICustomLibraryLoader.LoadLibrary), Module.TypeSystem.IntPtr, Module.ImportReference(importLoaderAttribute.GetInstanceMethod.ReturnType) );
             libLoaderLoad.HasThis = true;
             libLoaderLoad.Parameters.Add(new ParameterDefinition(Module.TypeSystem.String));
             // TODO: can't be null -> call?
@@ -141,22 +158,41 @@ namespace ImpWiz
             return m;
         }
 
+        private ImportLoaderCecil GetImportLoaderAttribute()
+        {
+            var attr = Method.CustomAttributes.FirstOrDefault(x => x.AttributeType.FullName == nameof(ImpWiz) + "." + nameof(Import) + "." + nameof(ImportLoaderAttribute));
+            if (attr == null)
+                return new ImportLoaderCecil(TypeContext.ModuleContext);
+
+            var attrValue = attr.CreateInstance<ImportLoaderCecil>(TypeContext.ModuleContext);
+            if (attrValue.LibraryLoaderTypeDefinition == null)
+                return new ImportLoaderCecil(TypeContext.ModuleContext, attrValue.LibraryLoaderTypeDefinition, attrValue.LoaderCookie);
+            return attrValue;
+        }
+
         private void CreateLibraryLoadSymbol(MethodDefinition m, string mangledName, ILProcessor processor)
         {
             int fnPtrLocalIndex = m.Body.Variables.Count;
             m.Body.Variables.Add(new VariableDefinition(Module.TypeSystem.IntPtr));
+
+            var importLoaderAttribute = GetImportLoaderAttribute();
+
+            if (importLoaderAttribute.LoaderCookie == null)
+                processor.Emit(OpCodes.Ldnull);
+            else
+                processor.Emit(OpCodes.Ldstr, importLoaderAttribute.LoaderCookie);
             
-            processor.Emit(OpCodes.Call, TypeContext.LibLoaderGetInstance);
+            processor.Emit(OpCodes.Call, Module.ImportReference(importLoaderAttribute.GetInstanceMethod));
             
-            processor.Emit(OpCodes.Call, CreateOrGetLibraryLoadLib());
+            processor.Emit(OpCodes.Call, CreateOrGetLibraryLoadLib(importLoaderAttribute));
             
-            var libLoaderGetProc = new MethodReference(nameof(LibLoader.GetProcAddress), Module.TypeSystem.IntPtr, TypeContext.InteropLibTypeReference);
+            var libLoaderGetProc = new MethodReference(nameof(ICustomLibraryLoader.GetProcAddress), Module.TypeSystem.IntPtr, Module.ImportReference(importLoaderAttribute.GetInstanceMethod.ReturnType));
             libLoaderGetProc.HasThis = true;
             libLoaderGetProc.Parameters.Add(new ParameterDefinition(Module.TypeSystem.IntPtr));
             libLoaderGetProc.Parameters.Add(new ParameterDefinition(Module.TypeSystem.String));
 
             processor.Emit(OpCodes.Ldstr, _mangledName);
-            processor.Emit(OpCodes.Call, libLoaderGetProc);
+            processor.Emit(OpCodes.Callvirt, libLoaderGetProc);
 
             processor.Emit(OpCodes.Dup);
             processor.EmitStloc(fnPtrLocalIndex);
@@ -173,13 +209,31 @@ namespace ImpWiz
 
         private void CreateInteropCall(ILProcessor processor, FieldDefinition fnPtr, MethodCallingConvention convention)
         {
-            var callSite = new CallSite(Method.ReturnType);
+            var callSite = new CallSite(Module.ImportReference(Method.ReturnType));
             int index = 0;
-            foreach (var p in Method.Parameters)
+
+            var parameterMarshalers = new (IImpWizMarshaler, VariableDefinition)[Method.Parameters.Count];
+
+            for (int i = 0; i < Method.Parameters.Count;i++)
             {
+                var p = Method.Parameters[i];
                 callSite.Parameters.Add(p);
 
                 processor.Emit(OpCodes.Ldarg, index++);
+                
+                IImpWizMarshaler marshaler = MarshalHelper.GetMarshaler(p);
+
+                //var variable = marshaler.CreateManagedAlloc(Method, processor);
+                //marshaler.CreateManagedToNative(Method, variable, processor);
+                
+                parameterMarshalers[i] = (marshaler, null);
+            }
+
+            foreach (var c in Method.MethodReturnType.CustomAttributes)
+            {
+                if (c.AttributeType.Name == "DllImport")
+                    continue;
+                callSite.MethodReturnType.CustomAttributes.Add(c);
             }
 
             callSite.CallingConvention = convention;
@@ -187,6 +241,20 @@ namespace ImpWiz
             processor.Emit(OpCodes.Ldsfld, fnPtr);
             processor.Emit(OpCodes.Calli, callSite);
             
+            for (int i = 0; i < Method.Parameters.Count;i++)
+            {
+                //(ICustomMarshaler marshaler, VariableDefinition variable) = parameterMarshalers[i];
+                //marshaler?.CreateNativeFree(Method, variable, processor);
+            }
+            
+            //ICustomMarshaler returnMarshaler = MarshalHelper.GetMarshaler(Method.MethodReturnType);
+            /*if (returnMarshaler != null)
+            {
+                var returnVariable = returnMarshaler.CreateManagedAlloc(Method, processor);
+                returnMarshaler.CreateNativeToManaged(Method, returnVariable, processor);
+
+                processor.EmitLdloc(returnVariable);
+            }*/
         }
         
         private MethodDefinition LazyMethodLoader { get; set; }
@@ -238,7 +306,7 @@ namespace ImpWiz
                 }
                 else if (attr.IsCallConvStdCall)
                 {
-                    _convention = MethodCallingConvention.ThisCall;
+                    _convention = MethodCallingConvention.StdCall;
                 }
                 else if (attr.IsCallConvWinapi)
                 {

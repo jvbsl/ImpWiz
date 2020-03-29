@@ -6,6 +6,7 @@ namespace ImpWiz.Filters
     {
         private class FilterStrategyAll : ITypeFilterStrategy
         {
+            /// <inheritdoc />
             public bool Filter(TypeDefinition type)
             {
                 return true;

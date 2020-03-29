@@ -26,20 +26,20 @@ namespace ImpWiz
             Type = type;
             
             LibraryLoaders = new Dictionary<string, MethodDefinition>();
+
+            if (moduleContext.AssemblyContext.IntegrateImpWizImporter)
+                InteropLibScope = moduleContext.ImportAssembly;
+            else
+                InteropLibScope = Module.AssemblyReferences.First(x => x.Name == nameof(ImpWiz) + "." + nameof(Import));
             
-            InteropLibScope = Module.AssemblyReferences.First(x => x.Name == nameof(ImpWiz) + "." + nameof(Import));
-            
-            InteropLibTypeReference = new TypeReference(nameof(ImpWiz) + "." + nameof(Import) + "." + nameof(Import.LibLoader), nameof(LibLoader), Module, InteropLibScope);
-            
-            
-            LibLoaderGetInstance = new MethodReference("get_" + nameof(LibLoader.Instance), InteropLibTypeReference, InteropLibTypeReference);
+            InteropLibTypeReference = new TypeReference(nameof(ImpWiz) + "." + nameof(Import), nameof(Import.ICustomLibraryLoader), Module, InteropLibScope);
         }
 
         public IMetadataScope InteropLibScope { get; }
 
         public TypeReference InteropLibTypeReference { get; }
         
-        public MethodReference LibLoaderGetInstance { get; }
+        //public MethodReference LibLoaderGetInstance { get; }
 
         
         
@@ -59,8 +59,7 @@ namespace ImpWiz
             bool processed = false;
             
             LockObject = new FieldDefinition("_<lockObject>", FieldAttributes.Private | FieldAttributes.Static | FieldAttributes.InitOnly, ModuleContext.Module.TypeSystem.Object);
-            
-            Type.Fields.Add(LockObject);
+
             
             foreach (var m in Type.Methods.ToArray())
             {
@@ -68,16 +67,19 @@ namespace ImpWiz
                     continue;
                 if (m.HasBody)
                     continue;
+
                 var methodProcessor = new MethodProcessor(this, m);
                 var methodInit = methodProcessor.Process();
                 processor.Emit(OpCodes.Call, methodInit);
                 processed = true;
+
             }
-            
+
             processor.Emit(OpCodes.Ret);
 
             if (processed)
             {
+                Type.Fields.Add(LockObject);
                 Type.Methods.Add(initMethod);
 
                 var staticCtor = Type.GetStaticConstructor();
@@ -92,9 +94,6 @@ namespace ImpWiz
 
                 var ctorProcessor = staticCtor.Body.GetILProcessor();
 
-                var prepareLibLoader = new MethodReference(nameof(ILibLoader.Prepare), Module.TypeSystem.Void, InteropLibTypeReference);
-                prepareLibLoader.HasThis = true;
-
                 var callInitInstruction = ctorProcessor.Create(OpCodes.Call, initMethod);
                 
                 var createLockObj = ctorProcessor.Create(OpCodes.Newobj, GetObjectCtor());
@@ -104,11 +103,6 @@ namespace ImpWiz
                 ctorProcessor.InsertAfter(createLockObj, storeLockObj);
                 
                 ctorProcessor.InsertAfter(storeLockObj, callInitInstruction);
-
-                var getLibInst = ctorProcessor.Create(OpCodes.Call, LibLoaderGetInstance);
-                
-                ctorProcessor.InsertAfter(callInitInstruction, getLibInst);
-                ctorProcessor.InsertAfter(getLibInst, ctorProcessor.Create(OpCodes.Callvirt, prepareLibLoader));
             }
         }
     }

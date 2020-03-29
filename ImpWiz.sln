@@ -5,6 +5,9 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ImpWiz.Import", "ImpWiz.Import\ImpWiz.Import.csproj", "{176A4A59-C59E-4F8D-A570-D06D9993AA34}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ImpWiz.Example", "ImpWiz.Example\ImpWiz.Example.csproj", "{C19910F7-E3E7-44FB-A1B3-CA957296DE1F}"
+  ProjectSection(ProjectDependencies) = postProject
+    {797D06C3-B629-4430-A679-DE2C0D2F20E0} = {797D06C3-B629-4430-A679-DE2C0D2F20E0}
+  EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ImpWiz.Tests", "ImpWiz.Tests\ImpWiz.Tests.csproj", "{AE28050C-6D41-47DC-B589-B4D9773DCF28}"
 EndProject

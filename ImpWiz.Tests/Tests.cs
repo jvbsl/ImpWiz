@@ -1,13 +1,19 @@
 ﻿using System;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
 using Xunit;
 
 namespace ImpWiz.Tests
 {
-    public class Tests
+    public class Tests : TestBase
     {
+
         [Fact]
         public void CanCallFunction()
         {
+            var assembly = typeof(Example.Example).Assembly;
+            var id = assembly.Modules.First().ModuleVersionId;
             var ptr = Example.Example.GetError();
         }
 
@@ -41,5 +47,7 @@ namespace ImpWiz.Tests
 
             Assert.True(false);
         }
+
+
     }
 }

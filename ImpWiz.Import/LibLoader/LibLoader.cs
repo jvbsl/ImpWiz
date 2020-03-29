@@ -6,7 +6,7 @@ namespace ImpWiz.Import.LibLoader
     /// <summary>
     /// A platform independent <see cref="ILibLoader"/> implementation.
     /// </summary>
-    public sealed class LibLoader : ILibLoader
+    public sealed class LibLoader : ICustomLibraryLoader
     {
         private readonly ILibLoader _internal;
 
@@ -14,6 +14,11 @@ namespace ImpWiz.Import.LibLoader
         /// The singleton <see cref="LibLoader"/> instance.
         /// </summary>
         public static LibLoader Instance { get; }
+
+        public static LibLoader GetInstance(string libLoaderCookie)
+        {
+            return Instance;
+        }
 
         static LibLoader()
         {
@@ -34,8 +39,10 @@ namespace ImpWiz.Import.LibLoader
                 _internal = new BsdLibLoader(); // used for OSX and BSD as libdl.dylib perhaps not available?
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
                 _internal = new UnixLibLoader(); // for now only linux: need to investigate if BsdLoader is enough for everything else
+            else
+                throw new NotSupportedException("Platform not supported!");
             
-            throw new NotSupportedException("Platform not supported!");
+            _internal.Prepare();
         }
 
         /// <inheritdoc />
@@ -68,12 +75,6 @@ namespace ImpWiz.Import.LibLoader
         public string GetError()
         {
             return _internal.GetError();
-        }
-
-        /// <inheritdoc />
-        public void Prepare()
-        {
-            _internal.Prepare();
         }
     }
 }
