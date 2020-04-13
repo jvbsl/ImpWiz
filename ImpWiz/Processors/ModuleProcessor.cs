@@ -38,6 +38,8 @@ namespace ImpWiz
                 if (declaringType != customAttribute.AttributeType)
                 {
                     var newAttributeCtor = new MethodReference(customAttribute.Constructor.Name, module.TypeSystem.Void, declaringType);
+                    newAttributeCtor.HasThis = customAttribute.Constructor.HasThis;
+                    newAttributeCtor.ExplicitThis = customAttribute.Constructor.ExplicitThis;
                     var newCustomAttribute = new CustomAttribute(newAttributeCtor, customAttribute.GetBlob());
                     foreach (var p in customAttribute.Constructor.Parameters)
                     {
@@ -45,6 +47,10 @@ namespace ImpWiz
                         newParam.Constant = p.Constant;
                         newParam.HasConstant = p.HasConstant;
                         newParam.HasDefault = p.HasDefault;
+                        foreach (var ca in p.CustomAttributes)
+                        {
+                            newParam.CustomAttributes.Add(new CustomAttribute(FixMethodReference(ca.Constructor, module), ca.GetBlob()));
+                        }
                         newAttributeCtor.Parameters.Add(newParam);
                     }
 
@@ -78,11 +84,12 @@ namespace ImpWiz
             if (methodReference.DeclaringType.Namespace.StartsWith("ImpWiz.Import"))
             {
                 var declaringType = FixTypeReference(methodReference.DeclaringType, module).Resolve();
-                return declaringType.Methods.First(
+                var newMethod = declaringType.Methods.First(
                     x => x.Name == methodReference.Name && x.Parameters.Count == methodReference.Parameters.Count &&
                          x.Parameters.Zip(methodReference.Parameters, (p1, p2) =>
                              p1.ParameterType.Namespace == p2.ParameterType.Namespace &&
                              p1.ParameterType.Name == p2.ParameterType.Name).All(same => same));
+                return newMethod;
             }
 
             return methodReference;

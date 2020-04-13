@@ -3,7 +3,8 @@ using System.Linq;
 using ImpWiz.CecilAttributes;
 using ImpWiz.Import;
 using ImpWiz.Import.LibLoader;
-using ImpWiz.Marshalers;
+using ImpWiz.Import.Marshalers;
+using ImpWiz.Processors;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Cecil.Rocks;
@@ -25,12 +26,26 @@ namespace ImpWiz
 
         public ModuleDefinition Module => TypeContext.Module;
         public MethodDefinition Method { get; }
+        
+        public MarshalProcessor[] MarshalProcessors { get; }
+        
+        public MarshalProcessor ReturnParameterMarshaler { get; }
         public MethodProcessor(TypeProcessor typeContext, MethodDefinition method)
         {
             TypeContext = typeContext;
             Method = method;
+            MarshalProcessors = new MarshalProcessor[Method.Parameters.Count];
+            for (int i = 0; i < Method.Parameters.Count; i++)
+            {
+                var p = Method.Parameters[i];
+                MarshalProcessors[i] = MarshalHelper.GetMarshaler(this, p);
+            }
+            
+            
+            ReturnParameterMarshaler = MarshalHelper.GetMarshaler(this, Method.MethodReturnType);
         }
-        
+
+
         private static Type GetConvention(MethodCallingConvention convention)
         {
             switch (convention)
@@ -50,21 +65,29 @@ namespace ImpWiz
             }
         }
         
-        private MethodDefinition CreateMethod(TypeDefinition declaringType,TypeReference returnType, string name, MethodCallingConvention convention)
+        private MethodDefinition CreateLazyMethod(TypeDefinition declaringType,TypeReference returnType, string name, MethodCallingConvention convention)
         {
             var module = declaringType.Module;
             var convModifier = GetConvention(convention);
-            var newReturnType = returnType;
+            var newReturnType = ReturnParameterMarshaler?.NativeType ?? returnType;
             if (convModifier != null)
                 newReturnType = returnType.MakeOptionalModifierType(module.ImportReference(convModifier));
             var m = new MethodDefinition(GetMangledLazyInitMethod(name), MethodAttributes.Static | MethodAttributes.Private | MethodAttributes.HideBySig, newReturnType);
-
+            declaringType.Methods.Add(m);
             int returnLocal = -1;
             if (returnType != Module.TypeSystem.Void)
             {
                 returnLocal = m.Body.Variables.Count;
                 m.Body.Variables.Add(new VariableDefinition(Module.ImportReference(returnType)));
             }
+
+            for (int i = 0;i<Method.Parameters.Count;i++)
+            {
+                var p = Method.Parameters[i];
+                var marshaler = MarshalProcessors[i];
+                m.Parameters.Add(new ParameterDefinition(p.Name, p.Attributes & (~ParameterAttributes.HasFieldMarshal), Module.ImportReference(marshaler?.NativeType ?? p.ParameterType)));
+            }
+            
             
             var ilProcessor = m.Body.GetILProcessor();
 
@@ -73,7 +96,12 @@ namespace ImpWiz
 
             CreateLibraryLoadSymbol(m, _mangledName, ilProcessor);
 
-            CreateInteropCall(ilProcessor, FunctionPointer, convention);
+            foreach (var p in m.Parameters)
+            {
+                ilProcessor.Emit(OpCodes.Ldarg, p);
+            }
+            
+            CreatePrimitiveInterop(ilProcessor, FunctionPointer, convention);
 
             if (returnType != Module.TypeSystem.Void)
             {
@@ -209,26 +237,49 @@ namespace ImpWiz
 
         private void CreateInteropCall(ILProcessor processor, FieldDefinition fnPtr, MethodCallingConvention convention)
         {
-            var callSite = new CallSite(Module.ImportReference(Method.ReturnType));
             int index = 0;
+            
+            ReturnParameterMarshaler?.InitializeMarshalInfo(processor);
 
-            var parameterMarshalers = new (IImpWizMarshaler, VariableDefinition)[Method.Parameters.Count];
-
+            Instruction cleanupInstructions = null;
+            
             for (int i = 0; i < Method.Parameters.Count;i++)
             {
                 var p = Method.Parameters[i];
-                callSite.Parameters.Add(p);
+                var marshaller = MarshalProcessors[i];
 
-                processor.Emit(OpCodes.Ldarg, index++);
-                
-                IImpWizMarshaler marshaler = MarshalHelper.GetMarshaler(p);
+                marshaller?.InitializeMarshalInfo(processor);
 
-                //var variable = marshaler.CreateManagedAlloc(Method, processor);
-                //marshaler.CreateManagedToNative(Method, variable, processor);
-                
-                parameterMarshalers[i] = (marshaler, null);
+                if (marshaller == null)
+                    processor.Emit(OpCodes.Ldarg, index++);
             }
 
+            foreach (var mP in MarshalProcessors)
+            {
+                mP?.MarshalManaged(processor, cleanupInstructions);
+
+                cleanupInstructions = mP?.CleanUpInstruction ?? cleanupInstructions;
+            }
+            
+            CreatePrimitiveInterop(processor, fnPtr, convention, cleanupInstructions);
+
+            ReturnParameterMarshaler?.MarshalNative(processor, cleanupInstructions);
+        }
+
+        private void CreatePrimitiveInterop(ILProcessor processor, FieldDefinition functionPointer, MethodCallingConvention convention, Instruction insertBeforeThis = null)
+        {
+            var callSite = new CallSite(Module.ImportReference(ReturnParameterMarshaler?.NativeType ?? Method.ReturnType));
+
+            for (int i = 0; i < Method.Parameters.Count; i++)
+            {
+                var p = Method.Parameters[i];
+                var marshaller = MarshalProcessors[i];
+
+
+                callSite.Parameters.Add(new ParameterDefinition(p.Name, p.Attributes,
+                    marshaller?.NativeType ?? p.ParameterType));
+            }
+            
             foreach (var c in Method.MethodReturnType.CustomAttributes)
             {
                 if (c.AttributeType.Name == "DllImport")
@@ -237,24 +288,17 @@ namespace ImpWiz
             }
 
             callSite.CallingConvention = convention;
-            
-            processor.Emit(OpCodes.Ldsfld, fnPtr);
-            processor.Emit(OpCodes.Calli, callSite);
-            
-            for (int i = 0; i < Method.Parameters.Count;i++)
-            {
-                //(ICustomMarshaler marshaler, VariableDefinition variable) = parameterMarshalers[i];
-                //marshaler?.CreateNativeFree(Method, variable, processor);
-            }
-            
-            //ICustomMarshaler returnMarshaler = MarshalHelper.GetMarshaler(Method.MethodReturnType);
-            /*if (returnMarshaler != null)
-            {
-                var returnVariable = returnMarshaler.CreateManagedAlloc(Method, processor);
-                returnMarshaler.CreateNativeToManaged(Method, returnVariable, processor);
 
-                processor.EmitLdloc(returnVariable);
-            }*/
+            if (insertBeforeThis == null)
+            {
+                processor.Append(Instruction.Create(OpCodes.Ldsfld, functionPointer));
+                processor.Append(Instruction.Create(OpCodes.Calli, callSite));
+            }
+            else
+            {
+                processor.InsertBefore(insertBeforeThis, Instruction.Create(OpCodes.Ldsfld, functionPointer));
+                processor.InsertBefore(insertBeforeThis, Instruction.Create(OpCodes.Calli, callSite));
+            }
         }
         
         private MethodDefinition LazyMethodLoader { get; set; }
@@ -262,10 +306,11 @@ namespace ImpWiz
         private FieldDefinition FunctionPointer { get; set; }
         
 
-        private MethodDefinition CreateInitMethod()
+        private MethodDefinition CreateInitMethod(string name)
         {
-            var initMethod = new MethodDefinition(GetMangledInitMethod(Method.Name), MethodAttributes.Static | MethodAttributes.Private | MethodAttributes.HideBySig, Module.TypeSystem.Void);
+            var initMethod = new MethodDefinition(GetMangledInitMethod(name), MethodAttributes.Static | MethodAttributes.Private | MethodAttributes.HideBySig, Module.TypeSystem.Void);
 
+            DeclaringType.Methods.Add(initMethod);
             var processor = initMethod.Body.GetILProcessor();
             if (LazyMethodLoader == null)
             {
@@ -322,15 +367,14 @@ namespace ImpWiz
             }
         }
 
-        public MethodDefinition Process()
+        public MethodDefinition Process(int overloadIndex)
         {
             FindNames();
-            var name = Method.Name;
+            var name = Method.Name + overloadIndex;
             FunctionPointer = new FieldDefinition(GetMangledFunctionPointer(name), FieldAttributes.Static | FieldAttributes.Private,
                 Module.TypeSystem.IntPtr);
-            LazyMethodLoader = CreateMethod(DeclaringType, Method.ReturnType, name, _convention);
-            DeclaringType.Methods.Add(LazyMethodLoader);
-            
+            LazyMethodLoader = CreateLazyMethod(DeclaringType, Method.ReturnType, name, _convention);
+
             DeclaringType.Fields.Add(FunctionPointer);
 
             Method.Attributes &= ~(MethodAttributes.PInvokeImpl | MethodAttributes.FamANDAssem);
@@ -341,8 +385,7 @@ namespace ImpWiz
             CreateInteropCall(ilProcessor, FunctionPointer, _convention);
             ilProcessor.Emit(OpCodes.Ret);
 
-            var initMethod = CreateInitMethod();
-            DeclaringType.Methods.Add(initMethod);
+            var initMethod = CreateInitMethod(name);
             return initMethod;
         }
     }

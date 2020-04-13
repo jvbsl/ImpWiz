@@ -8,6 +8,60 @@ namespace ImpWiz
     public static class IlProcessorExtensions
     {
         /// <summary>
+        /// Creates optimal <see cref="OpCodes.Ldloca"/> instructions by a given <paramref name="index"/>.
+        /// </summary>
+        /// <remarks>
+        /// Optimal meaning creating the special OpCodes(e.g. <see cref="OpCodes.Ldloc_S"/>...)
+        /// if <paramref name="index"/> is smaller than 4.
+        /// </remarks>
+        /// <param name="processor">The <see cref="ILProcessor"/>.</param>
+        /// <param name="index">The index of the variable to load.</param>
+        /// <returns>The created <see cref="Instruction"/>.</returns>
+        public static Instruction CreateLdloca(this ILProcessor processor, int index)
+        {
+            return processor.Create(OpCodes.Ldloca, index);
+        }
+        /// <summary>
+        /// Creates optimal <see cref="OpCodes.Ldloca"/> instructions by a given <paramref name="variable"/>.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="CreateLdloca(ILProcessor, int)"/>
+        /// </remarks>
+        /// <param name="processor">The <see cref="ILProcessor"/>.</param>
+        /// <param name="variable">The variable to load.</param>
+        /// <returns>The created <see cref="Instruction"/>.</returns>
+        public static Instruction CreateLdloca(this ILProcessor processor, VariableDefinition variable)
+        {
+            return processor.CreateLdloca(variable.Index);
+        }
+        
+        /// <summary>
+        /// Emits optimal <see cref="OpCodes.Ldloc"/> instructions by a given <paramref name="index"/>.
+        /// </summary>
+        /// <remarks>
+        /// Optimal meaning Creating the special OpCodes(e.g. <see cref="OpCodes.Ldloc_0"/>...)
+        /// if <paramref name="index"/> is smaller than 4.
+        /// </remarks>
+        /// <param name="processor">The <see cref="ILProcessor"/>.</param>
+        /// <param name="index">The index of the variable to load.</param>
+        public static void EmitLdloca(this ILProcessor processor, int index)
+        {
+            processor.Append(processor.CreateLdloca(index));
+        }
+
+        /// <summary>
+        /// Emits optimal <see cref="OpCodes.Ldloc"/> instructions by a given <paramref name="variable"/>.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="EmitLdloc(ILProcessor, int)"/>
+        /// </remarks>
+        /// <param name="processor">The <see cref="ILProcessor"/>.</param>
+        /// <param name="variable">The variable to load.</param>
+        public static void EmitLdloca(this ILProcessor processor, VariableDefinition variable)
+        {
+            processor.Append(processor.CreateLdloca(variable));
+        }
+        /// <summary>
         /// Creates optimal <see cref="OpCodes.Ldloc"/> instructions by a given <paramref name="index"/>.
         /// </summary>
         /// <remarks>
@@ -140,6 +194,48 @@ namespace ImpWiz
         public static void EmitStloc(this ILProcessor processor, VariableDefinition variable)
         {
             processor.Append(processor.CreateStloc(variable));
+        }
+
+        public static void EmitLdc_4(this ILProcessor processor, int val)
+        {
+            switch (val)
+            {
+                case 0:
+                    processor.Emit(OpCodes.Ldc_I4_0);
+                    break;
+                case 1:
+                    processor.Emit(OpCodes.Ldc_I4_1);
+                    break;
+                case 2:
+                    processor.Emit(OpCodes.Ldc_I4_2);
+                    break;
+                case 3:
+                    processor.Emit(OpCodes.Ldc_I4_3);
+                    break;
+                case 4:
+                    processor.Emit(OpCodes.Ldc_I4_4);
+                    break;
+                case 5:
+                    processor.Emit(OpCodes.Ldc_I4_5);
+                    break;
+                case 6:
+                    processor.Emit(OpCodes.Ldc_I4_6);
+                    break;
+                case 7:
+                    processor.Emit(OpCodes.Ldc_I4_7);
+                    break;
+                case 8:
+                    processor.Emit(OpCodes.Ldc_I4_8);
+                    break;
+                default:
+                    if (val >= sbyte.MinValue && val <= sbyte.MaxValue)
+                        processor.Emit(OpCodes.Ldc_I4_S, (sbyte) val);
+                    else if (val >= byte.MinValue && val <= byte.MaxValue)
+                        processor.Emit(OpCodes.Ldc_I4_S, (byte) val);
+                    else
+                        processor.Emit(OpCodes.Ldc_I4, val);
+                    break;
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.Loader;
 using ImpWiz.Filters;
@@ -12,8 +13,8 @@ namespace ImpWiz
     /// </summary>
     public static class Program
     {
-        
-        private static readonly Dictionary<AssemblyDefinition, string> LoadedAssemblies = new Dictionary<AssemblyDefinition, string>();
+        private static readonly Dictionary<AssemblyDefinition, string> LoadedAssemblies =
+            new Dictionary<AssemblyDefinition, string>();
 
         private static readonly AssemblyLoadContext LoadContext = new AssemblyLoadContext("sandbox", true);
 
@@ -36,16 +37,22 @@ namespace ImpWiz
                 Console.WriteLine("\t-o\t\tThe following destination files will be used for the input assemblies.");
                 return;
             }
+
             if (arguments.InputFiles.Count == 0)
             {
                 Console.Error.WriteLine("Error: No files specified.");
                 return;
             }
+
             if (arguments.InputFiles.Count < arguments.OutputFiles.Count)
             {
                 Console.Error.WriteLine("Error: Not enough input files specified, or too much output files specified.");
                 return;
             }
+
+            Stopwatch st = new Stopwatch();
+
+            st.Start();
 
             for (int i = 0; i < arguments.InputFiles.Count; i++)
             {
@@ -56,45 +63,52 @@ namespace ImpWiz
                     Console.Error.WriteLine("Input file: " + inputFile + " doesn't exist.");
                     return;
                 }
-                try
+
+                //try
+                //{
+                bool overwriteOriginal = Path.GetFullPath(inputFile) == Path.GetFullPath(outputFile);
+                //AssemblyDefinition outputAssembly = AssemblyDefinition.ReadAssembly(outputFile);
+
+                AssemblyDefinition asm = AssemblyDefinition.ReadAssembly(inputFile,
+                    new ReaderParameters(ReadingMode.Deferred) {ReadWrite = overwriteOriginal});
+                LoadedAssemblies.Add(asm, inputFile);
+
+                ITypeFilterStrategy strategy = TypeFilterStrategy.Exclude;
+
+                bool integrateImpWiz = true;
+
+
+                var assemblyProcessor = new AssemblyProcessor(asm, strategy, integrateImpWiz);
+
+                assemblyProcessor.Process();
+
+                LoadContext.Unload();
+
+
+                if (overwriteOriginal)
+                    asm.Write();
+                else
                 {
-                    bool overwriteOriginal = Path.GetFullPath(inputFile) == Path.GetFullPath(outputFile);
-                    //AssemblyDefinition outputAssembly = AssemblyDefinition.ReadAssembly(outputFile);
-            
-                    AssemblyDefinition asm = AssemblyDefinition.ReadAssembly(inputFile, new ReaderParameters(ReadingMode.Deferred) {ReadWrite = overwriteOriginal});
-                    LoadedAssemblies.Add(asm, inputFile);
-
-                    ITypeFilterStrategy strategy = TypeFilterStrategy.Exclude;
-
-                    bool integrateImpWiz = true;
-
-
-                    var assemblyProcessor = new AssemblyProcessor(asm, strategy, integrateImpWiz);
-            
-                    assemblyProcessor.Process();
-
-                    LoadContext.Unload();
-                    if (overwriteOriginal)
-                        asm.Write();
-                    else
-                        asm.Write(outputFile);
-                    /*if (File.Exists(inputFile))
-                        File.Delete(inputFile);
-    
                     if (File.Exists(outputFile))
-                        File.Move(outputFile, inputFile);*/
+                        File.Delete(outputFile);
+                    asm.Write(outputFile);
                 }
-                catch (Exception e)
-                {
-                    Console.Error.WriteLine(e);
-                    throw;
-                }
+
+                var nAsm = AssemblyDefinition.ReadAssembly(outputFile);
+                var attrTok = nAsm.MainModule.LookupToken(0x04000008);
+                var tok = nAsm.MainModule.LookupToken(0x06000021);
+
+                //}
+                //catch (Exception e)
+                //{
+                //    Console.Error.WriteLine(e);
+                //    throw;
+                //}
             }
 
+            st.Stop();
 
-
-
-
+            Console.WriteLine(st.ElapsedMilliseconds);
         }
     }
 }

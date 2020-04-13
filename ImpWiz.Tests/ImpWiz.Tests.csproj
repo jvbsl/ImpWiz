@@ -21,4 +21,11 @@
       <ProjectReference Include="..\ImpWiz\ImpWiz.csproj" />
     </ItemGroup>
 
+    <Target Name="NativeLibraryBuild" AfterTargets="CoreBuild">
+        <MakeDir Directories="$(BaseIntermediateOutputPath)/NativeTestLibrary" ContinueOnError="true" />
+        <Exec Command="cmake $(MSBuildProjectDirectory)/NativeTestLibrary/" WorkingDirectory="$(BaseIntermediateOutputPath)/NativeTestLibrary" />
+        <Exec Command="make" WorkingDirectory="$(BaseIntermediateOutputPath)/NativeTestLibrary" />
+
+        <Copy SourceFiles="$(BaseIntermediateOutputPath)/NativeTestLibrary/libNativeTestLibrary.so" DestinationFolder="$(OutDir)" />
+    </Target>
 </Project>

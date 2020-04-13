@@ -1,18 +1,16 @@
 using System;
 using System.Reflection;
-using Mono.Cecil;
-using Mono.Cecil.Cil;
 
-namespace ImpWiz.Marshalers
+namespace ImpWiz.Import.Marshalers
 {
-    public abstract class CustomMarshaler<TMarshaler, TSettings, TNative, TManaged> : IImpWizMarshaler<TSettings, TNative, TManaged>
+    public abstract class ImpWizMarshaler<TMarshaler, TSettings, TNative, TManaged> : IImpWizMarshaler<TSettings, TNative, TManaged>
         where TSettings : struct
         where TNative : unmanaged
         where TMarshaler : IImpWizMarshaler<TSettings, TNative, TManaged>
     {
         private static readonly Func<string, TMarshaler> GetInstance;
 
-        static CustomMarshaler()
+        static ImpWizMarshaler()
         {
             var type = typeof(TMarshaler);
             var mI = type.GetMethod("GetInstance", BindingFlags.Public | BindingFlags.Static, null, new[] {typeof(string)},

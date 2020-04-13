@@ -21,8 +21,8 @@
       <ProjectReference Include="..\ImpWiz.Import\ImpWiz.Import.csproj" />
     </ItemGroup>
     
-    <!--<Target Name="Rewrite" AfterTargets="Build">
+    <Target Name="Rewrite" AfterTargets="Build">
         <Exec Command="dotnet $(SolutionDir)/ImpWiz/bin/$(Configuration)/netcoreapp3.0/ImpWiz.dll -i $(OutDir)/ImpWiz.Example.dll" ConsoleToMSBuild="true" LogStandardErrorAsError="true" />
-    </Target>-->
+    </Target>
 
 </Project>

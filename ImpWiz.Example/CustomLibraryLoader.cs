@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using ImpWiz.Import;
 using ImpWiz.Import.LibLoader;
 
@@ -9,7 +10,12 @@ namespace ImpWiz.Example
         public IntPtr LoadLibrary(string name)
         {
             if (name == "<redirect>")
-                return LibLoader.Instance.LoadLibrary("libdl.so");
+            {
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                    return LibLoader.Instance.LoadLibrary("libNativeTestLibrary.so");
+                return LibLoader.Instance.LoadLibrary("NativeTestLibrary.dll");
+            }
+
             return LibLoader.Instance.LoadLibrary(name);
         }
 

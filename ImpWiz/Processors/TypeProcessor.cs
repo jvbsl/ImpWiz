@@ -60,6 +60,7 @@ namespace ImpWiz
             
             LockObject = new FieldDefinition("_<lockObject>", FieldAttributes.Private | FieldAttributes.Static | FieldAttributes.InitOnly, ModuleContext.Module.TypeSystem.Object);
 
+            Dictionary<string, int> overloadCount = new Dictionary<string, int>();
             
             foreach (var m in Type.Methods.ToArray())
             {
@@ -68,11 +69,15 @@ namespace ImpWiz
                 if (m.HasBody)
                     continue;
 
+                overloadCount.TryGetValue(m.Name, out var overrideIndex);
+
                 var methodProcessor = new MethodProcessor(this, m);
-                var methodInit = methodProcessor.Process();
+                var methodInit = methodProcessor.Process(overrideIndex);
                 processor.Emit(OpCodes.Call, methodInit);
                 processed = true;
 
+                overrideIndex++;
+                overloadCount[m.Name] = overrideIndex;
             }
 
             processor.Emit(OpCodes.Ret);

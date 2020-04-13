@@ -45,6 +45,19 @@ namespace ImpWiz
         /// </summary>
         public HashSet<string> NeededModuleReferences { get; }
         
+        public Dictionary<UnmanagedType, HashSet<MarshalerType>> SupportedMarshalers { get; }
+
+
+        private static bool IsMarshaler(TypeDefinition typeDef)
+        {
+            if (typeDef.BaseType == null)
+                return false;
+            var baseType = typeDef.BaseType;
+            if (baseType.Namespace == "ImpWiz.Import.Marshalers" && baseType.Name == "ImpWizMarshaler`4" &&
+                baseType.IsGenericInstance && ((GenericInstanceType)baseType).GenericArguments.Count == 4)
+                return true;
+            return IsMarshaler((baseType.Resolve()));
+        }
         
         public AssemblyProcessor(AssemblyDefinition assembly, ITypeFilterStrategy typeFilterStrategy = null, bool integrateImpWizImporter = false)
         {
@@ -52,14 +65,19 @@ namespace ImpWiz
             IntegrateImpWizImporter = integrateImpWizImporter;
             TypeFilterStrategy = typeFilterStrategy ?? Filters.TypeFilterStrategy.All;
             NeededModuleReferences = new HashSet<string>();
+            SupportedMarshalers = new Dictionary<UnmanagedType, HashSet<MarshalerType>>();
             
             var asmPath = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+            
+            var originalLibLoaderAssembly = AssemblyDefinition.ReadAssembly(Path.Combine(asmPath, "ImpWiz.Import.dll"));
+            
+            
             
             if (IntegrateImpWizImporter)
             {
                 //var libLoader = new TypeDefinition("ImpWiz.Import", "LibLoader", TypeAttributes.Class | TypeAttributes.Public, Assembly.MainModule.TypeSystem.Object);
 
-                var originalLibLoaderAssembly = AssemblyDefinition.ReadAssembly(Path.Combine(asmPath, "ImpWiz.Import.dll"));
+                
 
                 var originalLibLoaderType = originalLibLoaderAssembly.MainModule.Types.First(x => x.Namespace == nameof(ImpWiz) + "." + nameof(Import) + "." + nameof(Import.LibLoader) && x.Name == "LibLoader");
 
@@ -81,17 +99,39 @@ namespace ImpWiz
 
                 ImportAssembly = Assembly;
 
-                ImportAssemblyLibLoader = libLoader;
+                ImportAssemblyLibLoader = (TypeDefinition)libLoader;
             }
             else
             {
-                ImportAssembly = AssemblyDefinition.ReadAssembly(Path.Combine(asmPath, "ImpWiz.Import.dll"));
+                ImportAssembly = originalLibLoaderAssembly;
 
                 ImportAssemblyLibLoader =
                     ImportAssembly.MainModule.Types.First(x => x.Namespace == nameof(ImpWiz) + "." + nameof(Import) + "." + nameof(Import.LibLoader) && x.Name == "LibLoader");
             }
 
+            var allTypes = IntegrateImpWizImporter ? assembly.MainModule.Types : originalLibLoaderAssembly.MainModule.Types.Concat(assembly.MainModule.Types);
+            foreach (var type in allTypes)
+            {
+                if (type.IsAbstract || type.IsInterface || !type.IsClass)
+                    continue;
 
+                if (IsMarshaler(type))
+                {
+                    var marshaler = new MarshalerType(type);
+                    foreach (var unmanagedType in marshaler.SupportedUnmanagedTypes)
+                    {
+                        HashSet<MarshalerType> marshalers;
+                        if (!SupportedMarshalers.TryGetValue(unmanagedType, out marshalers))
+                        {
+                            marshalers = new HashSet<MarshalerType>();
+                            SupportedMarshalers.Add(unmanagedType, marshalers);
+                        }
+
+                        marshalers.Add(marshaler);
+                    }
+                }
+                    
+            }
         }
 
         public void Process()
