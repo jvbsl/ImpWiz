@@ -56,6 +56,9 @@ namespace ImpWiz
             if (baseType.Namespace == "ImpWiz.Import.Marshalers" && baseType.Name == "ImpWizMarshaler`4" &&
                 baseType.IsGenericInstance && ((GenericInstanceType)baseType).GenericArguments.Count == 4)
                 return true;
+            if (typeDef.Interfaces.Any(x => x.InterfaceType.Namespace == "ImpWiz.Import.Marshalers"
+                                            && x.InterfaceType.Name == "IImpWizMarshaler`3"))
+                return true;
             return IsMarshaler((baseType.Resolve()));
         }
         
@@ -134,25 +137,8 @@ namespace ImpWiz
             }
         }
 
-        public void Process()
+        private void MarshalerCleanup()
         {
-            foreach (var m in Assembly.Modules)
-            {
-                if (IntegrateImpWizImporter)
-                {
-                    for (int i = 0; i < m.AssemblyReferences.Count; i++)
-                    {
-                        if (m.AssemblyReferences[i].Name == ImportAssembly.Name.Name)
-                        {
-                            m.AssemblyReferences.RemoveAt(i);
-                            break;
-                        }
-                    }
-                }
-                var moduleProcessor = new ModuleProcessor(this, m);
-                moduleProcessor.Process();
-            }
-            
             foreach (var marshalerMap in SupportedMarshalers)
             {
                 foreach (var marshaler in marshalerMap.Value)
@@ -181,10 +167,63 @@ namespace ImpWiz
                             marshalerType.Properties.RemoveAt(i);
                         }
                     }
+                    for (int i = marshalerType.Interfaces.Count - 1; i >= 0; i--)
+                    {
+                        if (marshalerType.Interfaces[i].InterfaceType.Namespace == "ImpWiz.Import.Marshalers" &&
+                            (marshalerType.Interfaces[i].InterfaceType.Name == "IImpWizMarshaler`3" ||
+                             marshalerType.Interfaces[i].InterfaceType.Name == "IImpWizMarshaler"))
+                        {
+                            marshalerType.Interfaces.RemoveAt(i);
+                        }
+                    }
 
+                    int remainingMembers = marshalerType.Properties.Count + marshalerType.Fields.Count +
+                                           marshalerType.Methods.Count;
+                    
                     marshalerType.BaseType = marshalerType.Module.TypeSystem.Object;
+                    if (remainingMembers == 0)
+                    {
+                        Assembly.MainModule.Types.Remove(marshalerType);
+                    }
+
                 }
             }
+
+            var mainModule = Assembly.MainModule;
+
+            for (int i = mainModule.Types.Count - 1; i >= 0; i--)
+            {
+                if (mainModule.Types[i].Namespace == "ImpWiz.Import.Marshalers" &&
+                    (mainModule.Types[i].Name == "ImpWizMarshaler`4" ||
+                     mainModule.Types[i].Name == "IImpWizMarshaler`3" ||
+                     mainModule.Types[i].Name == "IImpWizMarshaler" ||
+                     mainModule.Types[i].Name == "MarshalInitialization`2"))
+                {
+                    mainModule.Types.RemoveAt(i);
+                }
+            }
+        }
+
+        public void Process()
+        {
+            foreach (var m in Assembly.Modules)
+            {
+                if (IntegrateImpWizImporter)
+                {
+                    for (int i = 0; i < m.AssemblyReferences.Count; i++)
+                    {
+                        if (m.AssemblyReferences[i].Name == ImportAssembly.Name.Name)
+                        {
+                            m.AssemblyReferences.RemoveAt(i);
+                            break;
+                        }
+                    }
+                }
+                var moduleProcessor = new ModuleProcessor(this, m);
+                moduleProcessor.Process();
+            }
+
+            MarshalerCleanup();
         }
     }
 }
