@@ -136,7 +136,6 @@ namespace ImpWiz
 
         public void Process()
         {
-
             foreach (var m in Assembly.Modules)
             {
                 if (IntegrateImpWizImporter)
@@ -152,6 +151,39 @@ namespace ImpWiz
                 }
                 var moduleProcessor = new ModuleProcessor(this, m);
                 moduleProcessor.Process();
+            }
+            
+            foreach (var marshalerMap in SupportedMarshalers)
+            {
+                foreach (var marshaler in marshalerMap.Value)
+                {
+                    var marshalerType = marshaler.TypeDefinition;
+                    for (int i = marshalerType.Methods.Count - 1; i >= 0; i--)
+                    {
+                        if (!marshalerType.Methods[i].IsStatic)
+                        {
+                            marshalerType.Methods.RemoveAt(i);
+                        }
+                    }
+                    
+                    for (int i = marshalerType.Fields.Count - 1; i >= 0; i--)
+                    {
+                        if (!marshalerType.Fields[i].IsStatic)
+                        {
+                            marshalerType.Fields.RemoveAt(i);
+                        }
+                    }
+                    
+                    for (int i = marshalerType.Properties.Count - 1; i >= 0; i--)
+                    {
+                        if (marshalerType.Properties[i].HasThis)
+                        {
+                            marshalerType.Properties.RemoveAt(i);
+                        }
+                    }
+
+                    marshalerType.BaseType = marshalerType.Module.TypeSystem.Object;
+                }
             }
         }
     }

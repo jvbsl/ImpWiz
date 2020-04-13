@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace ImpWiz.Import.Marshalers
 {
+    [MarshalerType(UnmanagedType.CustomMarshaler)]
     public class ImpWizCustomMarshaler<TCustomMarshaler> : IImpWizMarshaler<TCustomMarshaler, IntPtr, object>
         where TCustomMarshaler : ICustomMarshaler
     {
