@@ -68,6 +68,8 @@ namespace ImpWiz
                     continue;
                 if (m.HasBody)
                     continue;
+                if (!ModuleContext.AssemblyContext.TypeFilterStrategy.Filter(m.CustomAttributes))
+                    continue;
 
                 overloadCount.TryGetValue(m.Name, out var overrideIndex);
 

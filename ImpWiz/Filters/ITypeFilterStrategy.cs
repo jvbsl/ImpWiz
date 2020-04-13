@@ -1,4 +1,5 @@
 using Mono.Cecil;
+using Mono.Collections.Generic;
 
 namespace ImpWiz.Filters
 {
@@ -10,8 +11,8 @@ namespace ImpWiz.Filters
         /// <summary>
         /// Whether to include the given <paramref name="type"/> or not.
         /// </summary>
-        /// <param name="type">The type to check.</param>
-        /// <returns><c>true</c> if the type should be included; otherwise <c>false</c></returns>
-        bool Filter(TypeDefinition type);
+        /// <param name="customAttributes">The custom attributes to check.</param>
+        /// <returns><c>true</c> if the attributes suggest it should be included; otherwise <c>false</c></returns>
+        bool Filter(Collection<CustomAttribute> customAttributes);
     }
 }

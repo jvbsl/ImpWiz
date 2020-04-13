@@ -1,4 +1,5 @@
 using Mono.Cecil;
+using Mono.Collections.Generic;
 
 namespace ImpWiz.Filters
 {
@@ -7,7 +8,7 @@ namespace ImpWiz.Filters
         private class FilterStrategyAll : ITypeFilterStrategy
         {
             /// <inheritdoc />
-            public bool Filter(TypeDefinition type)
+            public bool Filter(Collection<CustomAttribute> customAttributes)
             {
                 return true;
             }

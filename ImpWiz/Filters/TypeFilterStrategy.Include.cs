@@ -1,6 +1,7 @@
 using System.Linq;
 using ImpWiz.Import;
 using Mono.Cecil;
+using Mono.Collections.Generic;
 
 namespace ImpWiz.Filters
 {
@@ -9,9 +10,9 @@ namespace ImpWiz.Filters
         private class FilterStrategyInclude : ITypeFilterStrategy
         {
             /// <inheritdoc />
-            public bool Filter(TypeDefinition type)
+            public bool Filter(Collection<CustomAttribute> customAttributes)
             {
-                var attr = type.CustomAttributes.FirstOrDefault(x => x.AttributeType.FullName == nameof(ImpWiz) + "." + nameof(Import) + "." + nameof(ImportFilterAttribute));
+                var attr = customAttributes.FirstOrDefault(x => x.AttributeType.FullName == nameof(ImpWiz) + "." + nameof(Import) + "." + nameof(ImportFilterAttribute));
                 if (attr == null)
                     return false;
 

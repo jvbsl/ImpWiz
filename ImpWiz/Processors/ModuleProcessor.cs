@@ -170,7 +170,7 @@ namespace ImpWiz
                     FixTypeDefinitionReferences(t, Module);
                 }
 
-                if (!AssemblyContext.TypeFilterStrategy.Filter(t))
+                if (!AssemblyContext.TypeFilterStrategy.Filter(t.CustomAttributes))
                 {
                     foreach (var m in t.Methods)
                     {
